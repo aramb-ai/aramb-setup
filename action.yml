@@ -35,9 +35,9 @@ runs:
 
         VERSION="${{ inputs.version }}"
         if [ "$VERSION" = "latest" ]; then
-          mise install "ubi:aramb-ai/release-beta[exe=aramb]"
+          mise use -g "ubi:aramb-ai/release-beta[exe=aramb]"
         else
-          mise install "ubi:aramb-ai/release-beta[exe=aramb]@$VERSION"
+          mise use -g "ubi:aramb-ai/release-beta[exe=aramb]@$VERSION"
         fi
 
         # Add mise shims to PATH for subsequent steps
