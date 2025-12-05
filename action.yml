@@ -1,0 +1,80 @@
+name: 'Setup Aramb'
+description: 'Install aramb CLI and start BuildKit for container builds'
+
+branding:
+  color: 'blue'
+  icon: 'package'
+
+inputs:
+  version:
+    description: 'Aramb CLI version to install (e.g., v1.0.0). Defaults to latest.'
+    required: false
+    default: 'latest'
+  buildkit-version:
+    description: 'BuildKit version to use'
+    required: false
+    default: 'latest'
+  skip-buildkit:
+    description: 'Skip starting BuildKit (if you manage it yourself)'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install mise
+      shell: bash
+      run: |
+        curl -sSL https://mise.run | sh
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Install aramb CLI
+      shell: bash
+      run: |
+        export PATH="$HOME/.local/bin:$PATH"
+
+        VERSION="${{ inputs.version }}"
+        if [ "$VERSION" = "latest" ]; then
+          mise install "ubi:aramb-ai/release-beta[exe=aramb]"
+        else
+          mise install "ubi:aramb-ai/release-beta[exe=aramb]@$VERSION"
+        fi
+
+        # Add mise shims to PATH for subsequent steps
+        echo "$HOME/.local/share/mise/shims" >> $GITHUB_PATH
+
+    - name: Start BuildKit
+      if: inputs.skip-buildkit != 'true'
+      shell: bash
+      run: |
+        BUILDKIT_VERSION="${{ inputs.buildkit-version }}"
+
+        docker run --rm --privileged -d \
+          --name buildkit \
+          "moby/buildkit:${BUILDKIT_VERSION}"
+
+        # Wait for BuildKit to be ready
+        echo "Waiting for BuildKit to be ready..."
+        for i in {1..30}; do
+          if docker exec buildkit buildctl debug workers >/dev/null 2>&1; then
+            echo "BuildKit is ready"
+            break
+          fi
+          sleep 1
+        done
+
+        # Export BUILDKIT_HOST for subsequent steps
+        echo "BUILDKIT_HOST=docker-container://buildkit" >> $GITHUB_ENV
+
+    - name: Verify setup
+      shell: bash
+      run: |
+        echo "=== Aramb CLI ==="
+        aramb --version || echo "aramb not found in PATH yet"
+
+        if [ "${{ inputs.skip-buildkit }}" != "true" ]; then
+          echo ""
+          echo "=== BuildKit ==="
+          echo "BUILDKIT_HOST=$BUILDKIT_HOST"
+          docker exec buildkit buildctl debug workers
+        fi
